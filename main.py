@@ -36,6 +36,7 @@ import copy
 
 
 def get_args_parser():
+    print("\n[DEBUG] Initializing argument parser...")
     parser = argparse.ArgumentParser(
         "Parameter-efficient Transfer-learning of AST", add_help=False
     )
@@ -61,6 +62,12 @@ def get_args_parser():
     )
     parser.add_argument("--save_best_ckpt", type=bool, default=False)
     parser.add_argument("--output_path", type=str, default="/checkpoints")
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Number of epochs to train. If not provided, will use value from train.yaml"
+    )
     parser.add_argument(
         "--is_AST",
         type=bool,
@@ -174,10 +181,17 @@ def get_args_parser():
 
 
 def main(args):
+    print("\n[DEBUG] Starting main execution...")
+    print(f"[DEBUG] CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"[DEBUG] CUDA device count: {torch.cuda.device_count()}")
+        print(f"[DEBUG] Current CUDA device: {torch.cuda.current_device()}")
+        print(f"[DEBUG] Device name: {torch.cuda.get_device_name(0)}")
 
     start_time = time.time()
 
     if args.use_wandb:
+        print("\n[DEBUG] Initializing WandB...")
         wandb.init(
             project=args.project_name,
             name=args.exp_name,
@@ -192,27 +206,35 @@ def main(args):
         wandb.define_metric("train/*", step_metric="train/step")
         wandb.define_metric("valid/*", step_metric="valid/step")
         wandb.define_metric("epoch/*", step_metric="epoch")
-    print(args)
+
+    print("\n[DEBUG] Arguments configuration:")
+    for arg in vars(args):
+        print(f"[DEBUG] {arg}: {getattr(args, arg)}")
 
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.enabled = True
 
     device = torch.device(args.device)
+    print(f"\n[DEBUG] Using device: {device}")
 
     # Fix the seed for reproducibility (if desired).
     if args.seed:
+        print(f"\n[DEBUG] Setting random seed to {args.seed}")
         seed = args.seed
         torch.manual_seed(seed)
         np.random.seed(seed)
 
+    print("\n[DEBUG] Loading training parameters from YAML...")
     with open("hparams/train.yaml", "r") as file:
         train_params = yaml.safe_load(file)
+    print("[DEBUG] Training parameters loaded successfully")
 
     if args.dataset_name == "FSC":
+        print("\n[DEBUG] Configuring FSC dataset parameters...")
         max_len_AST = train_params["max_len_AST_FSC"]
         num_classes = train_params["num_classes_FSC"]
         batch_size = train_params["batch_size_FSC"]
-        epochs = (
+        yaml_epochs = (
             train_params["epochs_FSC_AST"]
             if args.is_AST
             else train_params["epochs_FSC_WAV"]
@@ -221,22 +243,22 @@ def main(args):
         max_len_AST = train_params["max_len_AST_ESC"]
         num_classes = train_params["num_classes_ESC"]
         batch_size = train_params["batch_size_ESC"]
-        epochs = train_params["epochs_ESC"]
+        yaml_epochs = train_params["epochs_ESC"]
     elif args.dataset_name == "asthma":
         max_len_AST = train_params["max_len_AST_ESC"]  # Use ESC-50 settings as base
         num_classes = 2  # Binary classification
         batch_size = train_params["batch_size_ESC"]
-        epochs = train_params["epochs_ESC"]
+        yaml_epochs = train_params["epochs_ESC"]
     elif args.dataset_name == "urbansound8k":
         max_len_AST = train_params["max_len_AST_US8K"]
         num_classes = train_params["num_classes_US8K"]
         batch_size = train_params["batch_size_US8K"]
-        epochs = train_params["epochs_US8K"]
+        yaml_epochs = train_params["epochs_US8K"]
     elif args.dataset_name == "GSC":
         max_len_AST = train_params["max_len_AST_GSC"]
         num_classes = train_params["num_classes_GSC"]
         batch_size = train_params["batch_size_GSC"]
-        epochs = (
+        yaml_epochs = (
             train_params["epochs_GSC_AST"]
             if args.is_AST
             else train_params["epochs_GSC_WAV"]
@@ -245,14 +267,24 @@ def main(args):
         max_len_AST = train_params["max_len_AST_IEMO"]
         num_classes = train_params["num_classes_IEMO"]
         batch_size = train_params["batch_size_IEMO"]
-        epochs = train_params["epochs_IEMO"]
+        yaml_epochs = train_params["epochs_IEMO"]
     else:
         raise ValueError("The dataset you chose is not supported as of now.")
+
+    # Use command line epochs if provided, otherwise use yaml config
+    epochs = args.epochs if args.epochs is not None else yaml_epochs
+    print(f"[DEBUG] Using {epochs} epochs {'(from command line)' if args.epochs is not None else '(from YAML config)'}")
 
     if args.method == "prompt-tuning":
         final_output = train_params["final_output_prompt_tuning"]
     else:
         final_output = train_params["final_output"]
+
+    print(f"\n[DEBUG] Dataset configuration:")
+    print(f"[DEBUG] Max length AST: {max_len_AST}")
+    print(f"[DEBUG] Number of classes: {num_classes}")
+    print(f"[DEBUG] Batch size: {batch_size}")
+    print(f"[DEBUG] Number of epochs: {epochs}")
 
     accuracy_folds = []
 
@@ -297,11 +329,15 @@ def main(args):
         speaker_id_val = ["F", "M", "F", "M", "F", "M", "F", "M", "F", "M"]
         speaker_id_test = ["M", "F", "M", "F", "M", "F", "M", "F", "M", "F"]
 
+    print(f"\n[DEBUG] Starting {fold_number}-fold training process...")
+
     for fold in range(0, fold_number):
+        print(f"\n[DEBUG] Processing fold {fold + 1}/{fold_number}")
 
         # DATASETS
-
+        print("\n[DEBUG] Initializing datasets...")
         if args.dataset_name == "FSC":
+            print("[DEBUG] Loading FluentSpeech dataset...")
             train_data = FluentSpeech(
                 args.data_path,
                 max_len_AST,
@@ -310,8 +346,11 @@ def main(args):
                 few_shot=args.is_few_shot_exp,
                 samples_per_class=args.few_shot_samples,
             )
+            print(f"[DEBUG] Train dataset size: {len(train_data)}")
             val_data = FluentSpeech(args.data_path, max_len_AST, train="valid")
+            print(f"[DEBUG] Validation dataset size: {len(val_data)}")
             test_data = FluentSpeech(args.data_path, max_len_AST, train=False)
+            print(f"[DEBUG] Test dataset size: {len(test_data)}")
 
         elif args.dataset_name == "ESC-50":
             train_data = ESC_50(
@@ -427,6 +466,7 @@ def main(args):
                 is_AST=args.is_AST,
             )
 
+        print("\n[DEBUG] Creating data loaders...")
         train_loader = DataLoader(
             train_data,
             batch_size=batch_size,
@@ -435,6 +475,8 @@ def main(args):
             pin_memory=True,
             drop_last=False,
         )
+        print(f"[DEBUG] Number of training batches: {len(train_loader)}")
+
         test_loader = DataLoader(
             test_data,
             batch_size=batch_size,
@@ -457,11 +499,12 @@ def main(args):
             )
 
         # MODEL definition.
-
+        print("\n[DEBUG] Initializing model...")
         method = args.method
+        print(f"[DEBUG] Using method: {method}")
 
         if args.is_AST:
-
+            print("[DEBUG] Using AST model")
             if args.is_adapter_ablation:
                 model = AST_adapter_ablation(
                     max_length=max_len_AST,
@@ -648,11 +691,11 @@ def main(args):
 
         # PRINT MODEL PARAMETERS
         n_parameters = sum(p.numel() for p in model.parameters())
-        print("Number of params of the model:", n_parameters)
+        print("\n[DEBUG] Model parameters:")
+        print(f"[DEBUG] Total parameters: {n_parameters:,}")
 
         n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-        print("Number of trainable params of the model:", n_parameters)
+        print(f"[DEBUG] Trainable parameters: {n_parameters:,}")
 
         print(model)
 
@@ -683,7 +726,7 @@ def main(args):
             optimizer, len(train_loader) * (epochs)
         )
 
-        print(f"Start training for {epochs} epochs")
+        print(f"\n[DEBUG] Starting training for {epochs} epochs")
 
         best_acc = 0.0
 
