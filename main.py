@@ -41,6 +41,12 @@ def get_args_parser():
         "Parameter-efficient Transfer-learning of AST", add_help=False
     )
     parser.add_argument(
+        "--config_file",
+        type=str,
+        default="hparams/train.yaml",
+        help="Path to YAML configuration file"
+    )
+    parser.add_argument(
         "--data_path", type=str, help="Path to the location of the dataset."
     )
     parser.add_argument(
@@ -186,9 +192,9 @@ def get_args_parser():
                        help="Number of steps before learning rate decay starts. If None, uses total training steps")
     parser.add_argument("--scheduler_decay_rate", type=float, default=0.1,
                        help="Rate at which learning rate decays")
-    parser.add_argument("--scheduler_type", type=str, default="cosine",
+    parser.add_argument("--scheduler_type", type=str, default=None,
                        choices=["cosine", "linear", "exponential"],
-                       help="Type of learning rate scheduler to use")
+                       help="Type of learning rate scheduler to use. If not provided, will use value from YAML")
 
     return parser
 
@@ -237,10 +243,35 @@ def main(args):
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-    print("\n[DEBUG] Loading training parameters from YAML...")
-    with open("hparams/train.yaml", "r") as file:
-        train_params = yaml.safe_load(file)
-    print("[DEBUG] Training parameters loaded successfully")
+    print(f"\n[DEBUG] Loading training parameters from {args.config_file}...")
+    try:
+        with open(args.config_file, "r") as file:
+            train_params = yaml.safe_load(file)
+        print("[DEBUG] Training parameters loaded successfully")
+
+        # Load scheduler params from YAML if not provided via CLI
+        if args.scheduler_type is None and "scheduler_type" in train_params:
+            args.scheduler_type = train_params["scheduler_type"]
+            print(f"[DEBUG] Using scheduler type from YAML: {args.scheduler_type}")
+
+        if args.scheduler_warmup_steps == 0 and "scheduler_warmup_steps" in train_params:
+            args.scheduler_warmup_steps = train_params["scheduler_warmup_steps"]
+            print(f"[DEBUG] Using warmup steps from YAML: {args.scheduler_warmup_steps}")
+
+        if args.scheduler_decay_steps is None and "scheduler_decay_steps" in train_params:
+            args.scheduler_decay_steps = train_params["scheduler_decay_steps"]
+            print(f"[DEBUG] Using decay steps from YAML: {args.scheduler_decay_steps}")
+
+        if args.scheduler_decay_rate == 0.1 and "scheduler_decay_rate" in train_params:
+            args.scheduler_decay_rate = train_params["scheduler_decay_rate"]
+            print(f"[DEBUG] Using decay rate from YAML: {args.scheduler_decay_rate}")
+
+    except FileNotFoundError:
+        print(f"[ERROR] Config file not found: {args.config_file}")
+        raise
+    except yaml.YAMLError as e:
+        print(f"[ERROR] Error parsing YAML file: {e}")
+        raise
 
     if args.dataset_name == "FSC":
         print("\n[DEBUG] Configuring FSC dataset parameters...")
