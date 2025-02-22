@@ -177,6 +177,19 @@ def get_args_parser():
     parser.add_argument("--exp_name", type=str, default="")
     parser.add_argument("--entity", type=str, default="")
 
+    # Learning rate and scheduler controls
+    parser.add_argument("--lora_lr", type=float, default=None,
+                       help="Override LoRA learning rate from YAML config")
+    parser.add_argument("--scheduler_warmup_steps", type=int, default=0,
+                       help="Number of warmup steps for learning rate scheduler")
+    parser.add_argument("--scheduler_decay_steps", type=int, default=None,
+                       help="Number of steps before learning rate decay starts. If None, uses total training steps")
+    parser.add_argument("--scheduler_decay_rate", type=float, default=0.1,
+                       help="Rate at which learning rate decays")
+    parser.add_argument("--scheduler_type", type=str, default="cosine",
+                       choices=["cosine", "linear", "exponential"],
+                       help="Type of learning rate scheduler to use")
+
     return parser
 
 
@@ -529,7 +542,8 @@ def main(args):
                     lora_config=args.lora_config,
                     model_ckpt=args.model_ckpt_AST,
                 ).to(device)
-                lr = train_params["lr_LoRA"]
+                lr = args.lora_lr if args.lora_lr is not None else train_params["lr_LoRA"]
+                print(f"[DEBUG] Using LoRA learning rate: {lr}")
             elif method == "full-FT":
                 model = AST(
                     max_length=max_len_AST,
@@ -586,7 +600,8 @@ def main(args):
                     alpha=args.alpha_lora,
                     model_ckpt=args.model_ckpt_AST,
                 ).to(device)
-                lr = train_params["lr_LoRA"]
+                lr = args.lora_lr if args.lora_lr is not None else train_params["lr_LoRA"]
+                print(f"[DEBUG] Using LoRA learning rate: {lr}")
             elif method == "prefix-tuning":
                 model = AST_Prefix_tuning(
                     max_length=max_len_AST,
@@ -699,9 +714,8 @@ def main(args):
 
         print(model)
 
-        if (
-            method == "linear"
-        ):  # LR of the backbone to finetune must be quite smaller than the classifier.
+        # Optimizer and scheduler setup
+        if method == "linear":
             optimizer = AdamW(
                 [
                     {"params": model.model.parameters()},
@@ -722,9 +736,33 @@ def main(args):
             )
 
         criterion = torch.nn.CrossEntropyLoss()
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, len(train_loader) * (epochs)
-        )
+
+        # Learning rate scheduler setup
+        total_steps = len(train_loader) * epochs
+        decay_steps = args.scheduler_decay_steps if args.scheduler_decay_steps else total_steps
+
+        if args.scheduler_type == "cosine":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, decay_steps
+            )
+        elif args.scheduler_type == "linear":
+            scheduler = torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=1.0,
+                end_factor=args.scheduler_decay_rate,
+                total_iters=decay_steps
+            )
+        else:  # exponential
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                optimizer,
+                gamma=args.scheduler_decay_rate
+            )
+
+        print(f"[DEBUG] Using {args.scheduler_type} scheduler with:")
+        print(f"[DEBUG] - Total steps: {total_steps}")
+        print(f"[DEBUG] - Decay steps: {decay_steps}")
+        print(f"[DEBUG] - Warmup steps: {args.scheduler_warmup_steps}")
+        print(f"[DEBUG] - Decay rate: {args.scheduler_decay_rate}")
 
         print(f"\n[DEBUG] Starting training for {epochs} epochs")
 
