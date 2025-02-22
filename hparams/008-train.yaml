@@ -1,0 +1,35 @@
+# Optimization params.
+
+lr_adapter: 0.004  # Немного меньше стартовый LR
+lr_LoRA: 0.004
+lr_FitBit: 0.005
+lr_prompt: 0.01
+lr_fullFT: 0.00005
+lr_linear: 0.001
+lr_MoA: 0.005
+lr_WAV_linear: 0.001
+lr_WAV_fullFT: 0.00005
+lr_WAV_adapter: 0.005
+
+weight_decay: 0.07  # Чуть выше, чтобы избежать переобучения
+
+final_output: 'ALL'
+final_output_prompt_tuning: 'ALL'
+
+# Prefix Tuning params.
+patch_size: 16
+hidden_size: 768
+
+# Scheduler params.
+scheduler_type: "cosine_with_restarts"  # Косинусный спад, но без возврата наверх
+scheduler_warmup_steps: 76  # ~2 эпохи разогрева
+scheduler_decay_steps: 500  # Дольше держим LR перед снижением
+scheduler_min_lr: 0.0003  # Минимальный LR, ниже которого не упадет
+
+# Datasets params.
+
+max_len_AST_ESC: 500
+num_classes_ESC: 50
+batch_size_ESC: 32
+epochs_ESC_AST: 20
+epochs_ESC: 20

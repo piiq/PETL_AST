@@ -1,0 +1,35 @@
+# Optimization params.
+
+lr_adapter: 0.003
+lr_LoRA: 0.003
+lr_FitBit: 0.005
+lr_prompt: 0.01
+lr_fullFT: 0.00005
+lr_linear: 0.001
+lr_MoA: 0.005
+lr_WAV_linear: 0.001
+lr_WAV_fullFT: 0.00005
+lr_WAV_adapter: 0.005
+
+weight_decay: 0.06  # Slight increase to help generalization
+
+final_output: 'ALL'
+final_output_prompt_tuning: 'ALL'
+
+# Prefix Tuning params.
+patch_size: 16
+hidden_size: 768
+
+# Scheduler params.
+scheduler_type: "cosine"
+scheduler_warmup_steps: 112
+scheduler_decay_steps: 1000  # Extend decay for sustained learning
+scheduler_decay_rate: 0.7
+
+# Datasets params.
+
+max_len_AST_ESC: 500
+num_classes_ESC: 50
+batch_size_ESC: 48
+epochs_ESC_AST: 30
+epochs_ESC: 30

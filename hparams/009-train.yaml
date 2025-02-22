@@ -1,0 +1,35 @@
+# Optimization params.
+
+lr_adapter: 0.005  # High initial LR for fast convergence
+lr_LoRA: 0.005
+lr_FitBit: 0.005
+lr_prompt: 0.01
+lr_fullFT: 0.00005
+lr_linear: 0.001
+lr_MoA: 0.005
+lr_WAV_linear: 0.001
+lr_WAV_fullFT: 0.00005
+lr_WAV_adapter: 0.005
+
+weight_decay: 0.07  # Balanced to prevent overfitting
+
+final_output: 'ALL'
+final_output_prompt_tuning: 'ALL'
+
+# Prefix Tuning params.
+patch_size: 16
+hidden_size: 768
+
+# Scheduler params.
+scheduler_type: "cosine_with_restarts"
+scheduler_warmup_steps: 76  # ~2 epochs of warmup
+scheduler_decay_steps: 190  # Start LR decay at epoch 5
+scheduler_decay_rate: 0.1  # Aggressive drop, then smooth cosine decay
+
+# Datasets params.
+
+max_len_AST_ESC: 500
+num_classes_ESC: 50
+batch_size_ESC: 32
+epochs_ESC_AST: 20
+epochs_ESC: 20
