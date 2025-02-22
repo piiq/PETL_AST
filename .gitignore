@@ -1,1 +1,4 @@
 .DS_Store
+wandb
+**/**/**/*.pyc
+__pycache__

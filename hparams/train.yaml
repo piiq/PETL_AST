@@ -33,6 +33,7 @@ max_len_AST_ESC: 500
 num_classes_ESC: 50
 batch_size_ESC: 32
 epochs_ESC_AST: 50
+epochs_ESC: 50
 
 max_len_AST_US8K: 400
 num_classes_US8K: 10
@@ -49,4 +50,3 @@ max_len_AST_IEMO: 800
 num_classes_IEMO: 4
 batch_size_IEMO: 32
 epochs_IEMO: 20
-
