@@ -17,109 +17,111 @@ import torchaudio, torch
 
 class ESC_50(Dataset):
     """
-    The ESC-50 dataset is a labeled collection of 2000 environmental audio recordings 
+    The ESC-50 dataset is a labeled collection of 2000 environmental audio recordings
     suitable for benchmarking methods of environmental sound classification.
-    The dataset consists of 5-second-long recordings organized into 50 semantical classes (with 40 examples per class), 
-    loosely arranged into 5 major categories. 
+    The dataset consists of 5-second-long recordings organized into 50 semantical classes (with 40 examples per class),
+    loosely arranged into 5 major categories.
     """
 
     def __init__(self, data_path, max_len_AST, split, train_fold_nums=[1, 2, 3], valid_fold_nums=[4], test_fold_nums=[5], apply_SpecAug= False, few_shot = False, samples_per_class = 1):
         if split not in ("train", "valid", "test"):
             raise ValueError(f"`train` arg ({split}) must be a bool or train/valid/test.")
-            
+
         self.data_path = os.path.expanduser(data_path)
         self.max_len_AST = max_len_AST
         self.split = split
         self.train_fold_nums = train_fold_nums
         self.valid_fold_nums = valid_fold_nums
         self.test_fold_nums = test_fold_nums
-        
+
         self.apply_SpecAug = apply_SpecAug
         self.freq_mask = 24
         self.time_mask = 80
-        
+
         self.x, self.y = self.get_data()
-        
+
         if few_shot:
             self.x, self.y = self.get_few_shot_data(samples_per_class)
-    
+
     def __len__(self):
         return len(self.y)
-    
+
     def __getitem__(self, index):
-        
+
         if self.apply_SpecAug:
-        
             freqm = torchaudio.transforms.FrequencyMasking(self.freq_mask)
             timem = torchaudio.transforms.TimeMasking(self.time_mask)
-            
+
+            # x is already a tensor now
             fbank = torch.transpose(self.x[index], 0, 1)
             fbank = fbank.unsqueeze(0)
             fbank = freqm(fbank)
             fbank = timem(fbank)
             fbank = fbank.squeeze(0)
             fbank = torch.transpose(fbank, 0, 1)
-            
+
             return fbank, self.y[index]
         else:
             return self.x[index], self.y[index]
-        
+
     def get_few_shot_data(self, samples_per_class: int):
         x_few, y_few = [], []
-        
-        total_classes = np.unique(self.y)
-        
+
+        total_classes = torch.unique(self.y)
+
         for class_ in total_classes:
             cap = 0
-            
+
             for index in range(len(self.y)):
                 if self.y[index] == class_:
                     x_few.append(self.x[index])
                     y_few.append(self.y[index])
-                    
+
                     cap += 1
                     if cap == samples_per_class: break
-        return x_few, y_few
-    
+
+        return torch.stack(x_few), torch.stack(y_few)
+
     def get_data(self):
-        
-        if self.split == 'train': 
+
+        if self.split == 'train':
             fold = self.train_fold_nums
         elif self.split == 'valid':
             fold = self.valid_fold_nums
         else:
             fold = self.test_fold_nums
-        
+
         processor = AutoFeatureExtractor.from_pretrained("MIT/ast-finetuned-audioset-10-10-0.4593", max_length=self.max_len_AST)
-        
+
         x, y = [], []
 
         with open(os.path.join(self.data_path, "ESC-50/meta","esc50.csv")) as f:
             lines = f.readlines()[1:]
-        
-        
+
+
         for line in lines:
-            
+
             items = line[:-1].split(',')
-            
+
             if int(items[1]) not in fold: continue  # The sample is not included in the fold we are interested in.
 
             # Read the wav audio, apply processor depending on the SS model and store it in the overall list.
-            
+
             pathh = os.path.join(self.data_path, 'ESC-50/audio', items[0])
             wav,sampling_rate = soundfile.read(pathh)
             # Resample the sampling frequency from 44.1kHz to 16kHz.
             wav = librosa.resample(wav, orig_sr =sampling_rate, target_sr = 16000)
-            
-            
+
+
             x.append(processor(wav, sampling_rate= 16000, return_tensors='pt')['input_values'].squeeze(0))
-                
+
             y.append(
-                self.class_ids[items[3]]    
+                self.class_ids[items[3]]
             )
-            
-        return np.array(x), np.array(y)
-    
+
+        # Convert to tensors instead of numpy arrays
+        return torch.stack(x), torch.tensor(y, dtype=torch.long)
+
     @property
     def class_ids(self):
         return {
