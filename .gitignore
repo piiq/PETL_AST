@@ -2,3 +2,4 @@
 wandb
 **/**/**/*.pyc
 __pycache__
+checkpoints
