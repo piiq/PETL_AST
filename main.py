@@ -192,6 +192,8 @@ def get_args_parser():
                        help="Number of steps before learning rate decay starts. If None, uses total training steps")
     parser.add_argument("--scheduler_decay_rate", type=float, default=0.1,
                        help="Rate at which learning rate decays")
+    parser.add_argument("--scheduler_min_lr", type=float, default=None,
+                       help="Minimum learning rate to decay to. If None, will use scheduler default")
     parser.add_argument("--scheduler_type", type=str, default=None,
                        choices=["cosine", "linear", "exponential"],
                        help="Type of learning rate scheduler to use. If not provided, will use value from YAML")
@@ -265,6 +267,10 @@ def main(args):
         if args.scheduler_decay_rate == 0.1 and "scheduler_decay_rate" in train_params:
             args.scheduler_decay_rate = train_params["scheduler_decay_rate"]
             print(f"[DEBUG] Using decay rate from YAML: {args.scheduler_decay_rate}")
+
+        if args.scheduler_min_lr is None and "scheduler_min_lr" in train_params:
+            args.scheduler_min_lr = train_params["scheduler_min_lr"]
+            print(f"[DEBUG] Using minimum learning rate from YAML: {args.scheduler_min_lr}")
 
     except FileNotFoundError:
         print(f"[ERROR] Config file not found: {args.config_file}")
@@ -774,19 +780,29 @@ def main(args):
 
         if args.scheduler_type == "cosine":
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, decay_steps
+                optimizer,
+                decay_steps,
+                eta_min=args.scheduler_min_lr if args.scheduler_min_lr is not None else 0
             )
         elif args.scheduler_type == "linear":
+            end_factor = args.scheduler_decay_rate
+            if args.scheduler_min_lr is not None:
+                # Calculate end_factor to achieve desired min_lr
+                end_factor = args.scheduler_min_lr / lr
             scheduler = torch.optim.lr_scheduler.LinearLR(
                 optimizer,
                 start_factor=1.0,
-                end_factor=args.scheduler_decay_rate,
+                end_factor=end_factor,
                 total_iters=decay_steps
             )
         else:  # exponential
+            gamma = args.scheduler_decay_rate
+            if args.scheduler_min_lr is not None:
+                # Calculate gamma to achieve desired min_lr in decay_steps
+                gamma = (args.scheduler_min_lr / lr) ** (1 / decay_steps)
             scheduler = torch.optim.lr_scheduler.ExponentialLR(
                 optimizer,
-                gamma=args.scheduler_decay_rate
+                gamma=gamma
             )
 
         print(f"[DEBUG] Using {args.scheduler_type} scheduler with:")
@@ -794,6 +810,7 @@ def main(args):
         print(f"[DEBUG] - Decay steps: {decay_steps}")
         print(f"[DEBUG] - Warmup steps: {args.scheduler_warmup_steps}")
         print(f"[DEBUG] - Decay rate: {args.scheduler_decay_rate}")
+        print(f"[DEBUG] - Minimum learning rate: {args.scheduler_min_lr if args.scheduler_min_lr is not None else 'default'}")
 
         print(f"\n[DEBUG] Starting training for {epochs} epochs")
 
