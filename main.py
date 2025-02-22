@@ -919,8 +919,8 @@ def main(args):
         best_model = copy.copy(model)
         best_model.load_state_dict(best_params)
 
-        test_loss, test_acc = eval_one_epoch(
-            model, test_loader, device, criterion, desc=f"Testing fold {fold+1}"
+        test_loss, test_acc, test_metrics = eval_one_epoch(
+            best_model, test_loader, device, criterion, desc=f"Testing fold {fold+1}"
         )
 
         accuracy_folds.append(test_acc)
